@@ -10,3 +10,11 @@ O presente repositório serve para registro e desenvolvimento da API. Para acomp
 
 - [Safe Travels - Apliação Mobile](https://github.com/vicente-hofmeister/Safe-Travels-Mobile)
 - [Safe Travels - Wiki](https://github.com/vicente-hofmeister/Safe-Travels-Wiki)
+
+## Documentos e link relevantes:
+
+- [Endpoints da API](https://github.com/vicente-hofmeister/Safe-Travels-Wiki/blob/main/docs/api/swagger.yml)
+- [Arquitetura de banco de dados SQL](https://github.com/vicente-hofmeister/Safe-Travels-Wiki/blob/main/docs/database/sql_database_model.dbml)
+- [Diagrama de modelagem do banco de dados SQL](https://github.com/vicente-hofmeister/Safe-Travels-Wiki/blob/main/docs/database/sql_diagram_light.png)
+- [Diagrama de arquitetura de API](https://github.com/vicente-hofmeister/Safe-Travels-Wiki/blob/main/docs/architecture/api_architecture_diagram_v1.png)
+- [Diagrama de unidade computacional da API](https://github.com/vicente-hofmeister/Safe-Travels-Wiki/blob/main/docs/architecture/api_computational_unit_diagram_v1.png)
