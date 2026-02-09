@@ -2,16 +2,16 @@
   "name": "safe-travels-api",
   "version": "0.1.0",
   "description": "Repositório destinado ao registro da elaboração do Trabalho de Conclusão de Curso (TCC) de Sistemas de Informação do aluno Vicente Hofmeister pela Pontifícia Universidade Católica do Rio Grande do Sul (PUCRS).",
-  "main": "src/index.ts",
+  "main": "src/apiHandler.ts",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx watch src/apiHandler.ts",
+    "start": "node dist/apiHandler.js",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "format": "prettier -w .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy": "sam validate --lint && sam build && sam deploy --confirm-changeset --force-upload"
+    "deploy": "sam validate --lint && npm run build && sam package --resolve-s3 --output-template-file packaged.yaml && sam deploy --template-file packaged.yaml --no-confirm-changeset --no-fail-on-empty-changeset"
   },
   "repository": {
     "type": "git",
@@ -27,6 +27,7 @@
   "homepage": "https://github.com/vicente-hofmeister/Safe-Travels-API#readme",
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@types/aws-lambda": "^8.10.160",
     "@types/node": "^25.2.2",
     "eslint": "^9.39.2",
     "prettier": "^3.8.1",
@@ -34,5 +35,8 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
     "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "aws-lambda": "^1.0.7"
   }
 }
