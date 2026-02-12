@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
   Template de recursos utilizados para aplicação Safe Travels
@@ -9,43 +9,67 @@ Description: >
 
 Globals:
   Function:
-    Timeout: 3
-
+    Runtime: nodejs22.x
+    Architectures:
+      - x86_64
+    Timeout: 10
     Tracing: Active
-  Api:
-    TracingEnabled: true
+
 Resources:
-  HelloWorldFunction:
+  HTTPApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowMethods: ["GET", "OPTIONS"]
+        AllowHeaders: ["*"]
+        AllowOrigins: ["*"]
+
+  ApiHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: hello-world/
-      Handler: app.lambdaHandler
-      Runtime: nodejs22.x
-      Architectures:
-      - x86_64
+      FunctionName: APIHandler
+      CodeUri: .
+      Handler: dist/apiHandler.handler
       Events:
-        HelloWorld:
-          Type: Api 
+        AuthEcho:
+          Type: HttpApi
           Properties:
-            Path: /hello
-            Method: get
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2020
-        Sourcemap: true
-        EntryPoints:
-        - app.ts
+            ApiId: !Ref HTTPApi
+            Method: GET
+            Path: /auth/echo
+        GroupEcho:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HTTPApi
+            Method: GET
+            Path: /group/echo
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HTTPApi
+            Method: GET
+            Path: /health
+        LocationEcho:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HTTPApi
+            Method: GET
+            Path: /location/echo
+        TripEcho:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HTTPApi
+            Method: GET
+            Path: /trip/echo
+        UserEcho:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HTTPApi
+            Method: GET
+            Path: /user/echo
 
 Outputs:
-  HelloWorldApi:
-    Description: API Gateway endpoint URL for Prod stage for Hello World 
-      function
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
-    Description: Hello World Lambda Function ARN
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: Implicit IAM Role created for Hello World function
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  ApiUrl:
+    Description: "URL da API"
+    Value: !Sub "https://${HTTPApi}.execute-api.${AWS::Region}.amazonaws.com/"
