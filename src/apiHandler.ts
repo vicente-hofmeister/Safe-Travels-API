@@ -1,9 +1,9 @@
-import { healthCheck } from "./modules/health/health.service.js";
-import { authEcho } from "./modules/auth/auth.service.js";
-import { userEcho } from "./modules/user/user.service.js";
-import { tripEcho } from "./modules/trip/trip.service.js";
-import { groupEcho } from "./modules/group/group.service.js";
-import { locationEcho } from "./modules/location/location.service.js";
+import { healthCheck } from "./domain/health.service.js";
+import { authEcho } from "./domain/auth.service.js";
+import { userEcho } from "./domain/user.service.js";
+import { tripEcho } from "./domain/trip.service.js";
+import { groupEcho } from "./domain/group.service.js";
+import { locationEcho } from "./domain/location.service.js";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResult } from "aws-lambda";
 
 const json = (body: unknown, statusCode = 200): APIGatewayProxyResult => ({

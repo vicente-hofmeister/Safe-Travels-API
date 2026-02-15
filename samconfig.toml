@@ -16,6 +16,7 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
+parameter_overrides = "DBUsername=postgres DBPassword=${SAFE_TRAVELS_DB_PASSWORD}"
 
 [default.package.parameters]
 resolve_s3 = true

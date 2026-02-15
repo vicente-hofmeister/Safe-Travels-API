@@ -7,6 +7,12 @@ Description: >
 
   Vicente Leal Hofmeister
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W1011
+
 Globals:
   Function:
     Runtime: nodejs22.x
@@ -14,6 +20,21 @@ Globals:
       - x86_64
     Timeout: 10
     Tracing: Active
+
+Parameters:
+  DBUsername:
+    Type: String
+    Default: postgres
+    Description: Username para o banco de dados PostgreSQL
+    MinLength: 1
+    MaxLength: 16
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: Senha para o banco de dados PostgreSQL
+    MinLength: 8
 
 Resources:
   HTTPApi:
@@ -31,6 +52,18 @@ Resources:
       FunctionName: APIHandler
       CodeUri: .
       Handler: dist/apiHandler.handler
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt SafeTravelsSQLDB.Endpoint.Address
+          DB_PORT: !GetAtt SafeTravelsSQLDB.Endpoint.Port
+          DB_NAME: safetravels
+          DB_USER: !Ref DBUsername
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
       Events:
         AuthEcho:
           Type: HttpApi
@@ -69,7 +102,110 @@ Resources:
             Method: GET
             Path: /user/echo
 
+  # VPC e Rede
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: SafeTravelsVPC
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: SafeTravels-Private-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: SafeTravels-Private-2
+
+  # Security Groups
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group para Lambda Functions
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: SafeTravels-Lambda-SG
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group para RDS PostgreSQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      Tags:
+        - Key: Name
+          Value: SafeTravels-DB-SG
+
+  # RDS PostgreSQL
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group para RDS Safe Travels
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  SafeTravelsSQLDB:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBInstanceIdentifier: safetravels-db
+      DBName: safetravels
+      Engine: postgres
+      EngineVersion: "15.10"
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: "20"
+      StorageType: gp2
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "sun:04:00-sun:05:00"
+      EnableCloudwatchLogsExports:
+        - postgresql
+      Tags:
+        - Key: Name
+          Value: SafeTravels-DB
+
 Outputs:
   ApiUrl:
     Description: "URL da API"
     Value: !Sub "https://${HTTPApi}.execute-api.${AWS::Region}.amazonaws.com/"
+
+  DBEndpoint:
+    Description: "Endpoint do banco de dados RDS"
+    Value: !GetAtt SafeTravelsSQLDB.Endpoint.Address
+
+  DBPort:
+    Description: "Porta do banco de dados RDS"
+    Value: !GetAtt SafeTravelsSQLDB.Endpoint.Port
+
+  DBName:
+    Description: "Nome do banco de dados"
+    Value: safetravels
