@@ -1,9 +1,9 @@
 import { healthCheck } from "./modules/health/health.service.js";
-import { authEcho } from "./modules/auth/auth.service.js";
-import { userEcho } from "./modules/user/user.service.js";
-import { tripEcho } from "./modules/trip/trip.service.js";
-import { groupEcho } from "./modules/group/group.service.js";
-import { locationEcho } from "./modules/location/location.service.js";
+import { authHealth } from "./modules/auth/auth.service.js";
+import { userHealth } from "./modules/user/user.service.js";
+import { tripHealth } from "./modules/trip/trip.service.js";
+import { groupHealth } from "./modules/group/group.service.js";
+import { locationHealth } from "./modules/location/location.service.js";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResult } from "aws-lambda";
 
 const json = (body: unknown, statusCode = 200): APIGatewayProxyResult => ({
@@ -19,16 +19,16 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   switch (`${method} ${path}`) {
     case "GET /health":
       return json(healthCheck());
-    case "GET /auth/echo":
-      return json(authEcho());
-    case "GET /user/echo":
-      return json(userEcho());
-    case "GET /trip/echo":
-      return json(tripEcho());
-    case "GET /group/echo":
-      return json(groupEcho());
-    case "GET /location/echo":
-      return json(locationEcho());
+    case "GET /auth/health":
+      return json(authHealth());
+    case "GET /user/health":
+      return json(userHealth());
+    case "GET /trip/health":
+      return json(tripHealth());
+    case "GET /group/health":
+      return json(groupHealth());
+    case "GET /location/health":
+      return json(locationHealth());
     default:
       return json({ message: "Not Found" }, 404);
   }

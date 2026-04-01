@@ -4,9 +4,20 @@
   "description": "Repositório destinado ao registro da elaboração do Trabalho de Conclusão de Curso (TCC) de Sistemas de Informação do aluno Vicente Hofmeister pela Pontifícia Universidade Católica do Rio Grande do Sul (PUCRS).",
   "main": "src/apiHandler.ts",
   "scripts": {
-    "dev": "tsx watch src/apiHandler.ts",
-    "start": "node dist/apiHandler.js",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
     "build": "tsc -p tsconfig.build.json",
+    "docker:build": "docker build -t safe-travels-api:dev .",
+    "docker:up": "docker compose up -d --force-recreate",
+    "docker:reset": "docker compose down -v --remove-orphans && docker compose up -d --build",
+    "docker:down": "docker compose down --remove-orphans",
+    "docker:logs": "docker compose logs -f",
+    "docker:api:up": "docker compose up -d --force-recreate api",
+    "docker:api:down": "docker compose stop api",
+    "docker:api:logs": "docker compose logs -f api",
+    "docker:db:up": "docker compose up -d database",
+    "docker:db:down": "docker compose stop database",
+    "docker:db:logs": "docker compose logs -f database",
     "lint": "eslint .",
     "format": "prettier -w .",
     "test": "vitest run",
@@ -29,6 +40,7 @@
     "@eslint/js": "^9.39.2",
     "@types/aws-lambda": "^8.10.160",
     "@types/node": "^25.2.2",
+    "@types/pg": "^8.20.0",
     "eslint": "^9.39.2",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
@@ -37,6 +49,9 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "aws-lambda": "^1.0.7"
+    "@fastify/cors": "^11.2.0",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.8.4",
+    "pg": "^8.16.3"
   }
 }

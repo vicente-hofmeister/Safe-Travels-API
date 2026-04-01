@@ -1,7 +1,7 @@
-export function groupEcho() {
+export function groupHealth() {
   return {
     status: "ok",
     timestamp: new Date().toISOString(),
-    message: "Hello from group service!",
+    message: "Group service is healthy!",
   } as const;
 }

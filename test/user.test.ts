@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { userEcho } from "../src/modules/user/user.service";
+import { userHealth } from "../src/modules/user/user.service";
 
-describe("userEcho", () => {
+describe("userHealth", () => {
   it("returns ok with message", () => {
-    const r = userEcho();
+    const r = userHealth();
     expect(r.status).toBe("ok");
     expect(typeof r.timestamp).toBe("string");
-    expect(r.message).toBe("Hello from user service!");
+    expect(r.message).toBe("User service is healthy!");
   });
 });

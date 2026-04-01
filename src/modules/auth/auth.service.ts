@@ -1,7 +1,7 @@
-export function authEcho() {
+export function authHealth() {
   return {
     status: "ok",
     timestamp: new Date().toISOString(),
-    message: "Hello from auth service!",
+    message: "Auth service is healthy!",
   } as const;
 }
