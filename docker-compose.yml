@@ -1,0 +1,80 @@
+services:
+  database:
+    image: postgres:17-alpine
+    container_name: safe-travels-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SAFE_TRAVELS_DB_NAME}
+      POSTGRES_USER: ${SAFE_TRAVELS_DB_USER}
+      POSTGRES_PASSWORD: ${SAFE_TRAVELS_DB_PASSWORD}
+    ports:
+      - "${SAFE_TRAVELS_DB_PORT}:5432"
+    volumes:
+      - safe_travels_database_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${SAFE_TRAVELS_DB_USER} -d ${SAFE_TRAVELS_DB_NAME}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db-init:
+    image: postgres:17-alpine
+    container_name: safe-travels-db-init
+    restart: "no"
+    environment:
+      PGPASSWORD: ${SAFE_TRAVELS_DB_PASSWORD}
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - ./database/init:/schema:ro
+    command:
+      [
+        "sh",
+        "-c",
+        "psql -h database -p 5432 -U ${SAFE_TRAVELS_DB_USER} -d ${SAFE_TRAVELS_DB_NAME} -f /schema/create_schema.sql",
+      ]
+
+  adminer:
+    image: adminer:4
+    container_name: safe-travels-adminer
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: ${SAFE_TRAVELS_ADMINER_DEFAULT_SERVER}
+    ports:
+      - "${SAFE_TRAVELS_ADMINER_PORT}:8080"
+    depends_on:
+      database:
+        condition: service_healthy
+
+  api:
+    image: safe-travels-api:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: safe-travels-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${SAFE_TRAVELS_NODE_ENV}
+      HOST: ${SAFE_TRAVELS_API_HOST}
+      PORT: ${SAFE_TRAVELS_API_PORT}
+      DB_HOST: ${SAFE_TRAVELS_DB_HOST}
+      DB_PORT: ${SAFE_TRAVELS_DB_PORT}
+      DB_NAME: ${SAFE_TRAVELS_DB_NAME}
+      DB_USER: ${SAFE_TRAVELS_DB_USER}
+      DB_PASSWORD: ${SAFE_TRAVELS_DB_PASSWORD}
+    depends_on:
+      database:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    ports:
+      - "${SAFE_TRAVELS_API_PORT}:3000"
+
+volumes:
+  safe_travels_database_data:

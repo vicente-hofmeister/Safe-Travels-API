@@ -1,7 +1,7 @@
-export function userEcho() {
+export function userHealth() {
   return {
     status: "ok",
     timestamp: new Date().toISOString(),
-    message: "Hello from user service!",
+    message: "User service is healthy!",
   } as const;
 }

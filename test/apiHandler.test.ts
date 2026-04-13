@@ -49,9 +49,9 @@ describe("handler", () => {
     });
   });
 
-  describe("GET /auth/echo", () => {
-    it("returns 200 with auth echo response", async () => {
-      const event = createMockEvent("GET", "/auth/echo");
+  describe("GET /auth/health", () => {
+    it("returns 200 with auth health response", async () => {
+      const event = createMockEvent("GET", "/auth/health");
       const response = await handler(event);
 
       expect(response.statusCode).toBe(200);
@@ -61,14 +61,14 @@ describe("handler", () => {
 
       const body = JSON.parse(response.body);
       expect(body.status).toBe("ok");
-      expect(body.message).toBe("Hello from auth service!");
+      expect(body.message).toBe("Auth service is healthy!");
       expect(typeof body.timestamp).toBe("string");
     });
   });
 
-  describe("GET /user/echo", () => {
-    it("returns 200 with user echo response", async () => {
-      const event = createMockEvent("GET", "/user/echo");
+  describe("GET /user/health", () => {
+    it("returns 200 with user health response", async () => {
+      const event = createMockEvent("GET", "/user/health");
       const response = await handler(event);
 
       expect(response.statusCode).toBe(200);
@@ -78,14 +78,14 @@ describe("handler", () => {
 
       const body = JSON.parse(response.body);
       expect(body.status).toBe("ok");
-      expect(body.message).toBe("Hello from user service!");
+      expect(body.message).toBe("User service is healthy!");
       expect(typeof body.timestamp).toBe("string");
     });
   });
 
-  describe("GET /trip/echo", () => {
-    it("returns 200 with trip echo response", async () => {
-      const event = createMockEvent("GET", "/trip/echo");
+  describe("GET /trip/health", () => {
+    it("returns 200 with trip health response", async () => {
+      const event = createMockEvent("GET", "/trip/health");
       const response = await handler(event);
 
       expect(response.statusCode).toBe(200);
@@ -95,14 +95,14 @@ describe("handler", () => {
 
       const body = JSON.parse(response.body);
       expect(body.status).toBe("ok");
-      expect(body.message).toBe("Hello from trip service!");
+      expect(body.message).toBe("Trip service is healthy!");
       expect(typeof body.timestamp).toBe("string");
     });
   });
 
-  describe("GET /group/echo", () => {
-    it("returns 200 with group echo response", async () => {
-      const event = createMockEvent("GET", "/group/echo");
+  describe("GET /group/health", () => {
+    it("returns 200 with group health response", async () => {
+      const event = createMockEvent("GET", "/group/health");
       const response = await handler(event);
 
       expect(response.statusCode).toBe(200);
@@ -112,14 +112,14 @@ describe("handler", () => {
 
       const body = JSON.parse(response.body);
       expect(body.status).toBe("ok");
-      expect(body.message).toBe("Hello from group service!");
+      expect(body.message).toBe("Group service is healthy!");
       expect(typeof body.timestamp).toBe("string");
     });
   });
 
-  describe("GET /location/echo", () => {
-    it("returns 200 with location echo response", async () => {
-      const event = createMockEvent("GET", "/location/echo");
+  describe("GET /location/health", () => {
+    it("returns 200 with location health response", async () => {
+      const event = createMockEvent("GET", "/location/health");
       const response = await handler(event);
 
       expect(response.statusCode).toBe(200);
@@ -129,7 +129,7 @@ describe("handler", () => {
 
       const body = JSON.parse(response.body);
       expect(body.status).toBe("ok");
-      expect(body.message).toBe("Hello from location service!");
+      expect(body.message).toBe("Location service is healthy!");
       expect(typeof body.timestamp).toBe("string");
     });
   });
@@ -158,7 +158,7 @@ describe("handler", () => {
     });
 
     it("returns 404 for PUT on existing path", async () => {
-      const event = createMockEvent("PUT", "/user/echo");
+      const event = createMockEvent("PUT", "/user/health");
       const response = await handler(event);
 
       expect(response.statusCode).toBe(404);

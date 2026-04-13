@@ -1,0 +1,111 @@
+
+Table users {
+  user_id varchar [default: `gen_random_uuid()`]
+  username varchar [not null]
+  name varchar [not null]
+  email varchar[] [not null]
+  phone varchar
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp
+  profile_image varchar
+  location_data varchar [not null, default: "", note: "Default is user_id"]
+  privacy_settings varchar [not null, default: "default"]
+
+  indexes {
+    user_id [pk]
+    username
+    email
+    phone
+  }
+}
+
+Table follows {
+  follower_id varchar [not null, ref: > users.user_id]
+  following_id varchar [not null, ref: > users.user_id]
+  tier varchar [default: 'regular']
+  followed_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (follower_id, following_id) [pk]
+  }
+}
+
+Table groups {
+  group_id varchar [default: `gen_random_uuid()`]
+  owner_id varchar [not null, ref: > users.user_id]
+  name varchar
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp
+  profile_image varchar
+  location_data varchar [not null, default: "", note: "Default is group_id"]
+
+  indexes {
+    group_id [pk]
+  }
+}
+
+Table group_members {
+  group_id varchar [not null, ref: > groups.group_id]
+  user_id varchar [not null, ref: > users.user_id]
+  joined_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (group_id, user_id) [pk]
+  }
+}
+
+Table trips {
+  trip_id varchar [default: `gen_random_uuid()`]
+  title varchar [not null]
+  description text
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+  deleted_at timestamp
+  trip_image varchar
+  start_date date [not null, default: `now()`]
+  end_date date
+  location_data varchar [not null, default: "", note: "Default is trip_id"]
+
+  indexes {
+    trip_id [pk]
+  }
+}
+
+Table user_trips {
+  user_id varchar [ref: > users.user_id]
+  trip_id varchar [ref: > trips.trip_id]
+
+  indexes {
+    (user_id, trip_id) [pk]
+  }
+}
+
+Table group_trips {
+  group_id varchar [ref: > groups.group_id]
+  trip_id varchar [ref: > trips.trip_id]
+
+  indexes {
+    (group_id, trip_id) [pk]
+  }
+}
+
+Table location_events {
+  location_event_id varchar [default: `gen_random_uuid()`]
+  user_id varchar [not null, ref: > users.user_id]
+  trip_id varchar [ref: > trips.trip_id]
+  group_id varchar [ref: > groups.group_id]
+  latitude decimal [not null]
+  longitude decimal [not null]
+  accuracy_meters int
+  captured_at timestamp [not null, note: "Event time from device"]
+  created_at timestamp [not null, default: `now()`, note: "Server receive/store time"]
+
+  indexes {
+    location_event_id [pk]
+    (user_id, captured_at)
+    (trip_id, captured_at)
+    (group_id, captured_at)
+  }
+}

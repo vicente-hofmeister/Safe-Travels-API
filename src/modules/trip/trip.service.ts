@@ -1,7 +1,7 @@
-export function tripEcho() {
+export function tripHealth() {
   return {
     status: "ok",
     timestamp: new Date().toISOString(),
-    message: "Hello from trip service!",
+    message: "Trip service is healthy!",
   } as const;
 }
