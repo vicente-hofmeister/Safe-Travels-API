@@ -34,39 +34,42 @@ export async function locationRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get<{ Params: { locationEventId: string } }>("/id/:locationEventId", async (request, reply) => {
-    try {
-      const result = await getLocationByIdController(request.params.locationEventId);
+  app.get<{ Params: { locationEventId: string } }>(
+    "/id/:locationEventId",
+    async (request, reply) => {
+      try {
+        const result = await getLocationByIdController(request.params.locationEventId);
 
-      if (!result) {
-        reply.code(404);
+        if (!result) {
+          reply.code(404);
+          return {
+            status: "error",
+            timestamp: new Date().toISOString(),
+            message: "Nenhuma localizacao encontrada para este id.",
+          };
+        }
+
+        reply.code(200);
+        return result;
+      } catch (error) {
+        if (error instanceof Error) {
+          reply.code(400);
+          return {
+            status: "error",
+            timestamp: new Date().toISOString(),
+            message: error.message,
+          };
+        }
+
+        reply.code(500);
         return {
           status: "error",
           timestamp: new Date().toISOString(),
-          message: "Nenhuma localizacao encontrada para este id.",
+          message: "Erro interno ao buscar localizacao.",
         };
       }
-
-      reply.code(200);
-      return result;
-    } catch (error) {
-      if (error instanceof Error) {
-        reply.code(400);
-        return {
-          status: "error",
-          timestamp: new Date().toISOString(),
-          message: error.message,
-        };
-      }
-
-      reply.code(500);
-      return {
-        status: "error",
-        timestamp: new Date().toISOString(),
-        message: "Erro interno ao buscar localizacao.",
-      };
-    }
-  });
+    },
+  );
 
   app.get<{ Params: { userId: string } }>("/user/:userId", async (request, reply) => {
     try {

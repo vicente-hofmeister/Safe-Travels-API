@@ -1,3 +1,16 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id varchar(120) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  username varchar(80) NOT NULL UNIQUE,
+  name varchar(150) NOT NULL,
+  email varchar(255) NOT NULL UNIQUE,
+  password_hash text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
 CREATE TABLE IF NOT EXISTS location_events (
   location_event_id bigserial PRIMARY KEY,
   user_id varchar(120) NOT NULL,
