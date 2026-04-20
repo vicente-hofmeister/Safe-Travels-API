@@ -1,14 +1,15 @@
 # syntax=docker/dockerfile:1
 
-FROM node:25-alpine AS build
+FROM node:25-alpine AS deps
 WORKDIR /app
-
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json tsconfig.build.json ./
+FROM node:25-alpine AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
 COPY src ./src
-
 RUN npm run build
 RUN npm prune --omit=dev
 
