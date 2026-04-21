@@ -4,6 +4,7 @@ import {
   registerLocationController,
   getLocationByIdController,
   getLocationByUserIdController,
+  getLatestLocationPerUserController,
 } from "./location.controller.js";
 import type { RegisterLocationInput } from "./location.service.js";
 
@@ -70,6 +71,38 @@ export async function locationRoutes(app: FastifyInstance) {
       }
     },
   );
+
+  app.get<{ Querystring: { userIds?: string } }>("/latest", async (request, reply) => {
+    try {
+      const rawUserIds = request.query.userIds;
+      const userIds = rawUserIds
+        ? rawUserIds
+            .split(",")
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0)
+        : undefined;
+
+      const result = await getLatestLocationPerUserController(userIds);
+      reply.code(200);
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        reply.code(400);
+        return {
+          status: "error",
+          timestamp: new Date().toISOString(),
+          message: error.message,
+        };
+      }
+
+      reply.code(500);
+      return {
+        status: "error",
+        timestamp: new Date().toISOString(),
+        message: "Erro interno ao buscar localizacoes.",
+      };
+    }
+  });
 
   app.get<{ Params: { userId: string } }>("/user/:userId", async (request, reply) => {
     try {

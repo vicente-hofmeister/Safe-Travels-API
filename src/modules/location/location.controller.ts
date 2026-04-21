@@ -3,6 +3,7 @@ import {
   registerLocation,
   getLocationById,
   getLocationByUserId,
+  getLatestLocationPerUser,
   type RegisterLocationInput,
 } from "./location.service.js";
 
@@ -20,4 +21,8 @@ export async function getLocationByIdController(locationEventId: unknown) {
 
 export async function getLocationByUserIdController(userId: unknown) {
   return getLocationByUserId(userId);
+}
+
+export async function getLatestLocationPerUserController(userIds?: string[]) {
+  return getLatestLocationPerUser(userIds);
 }

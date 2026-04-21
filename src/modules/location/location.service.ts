@@ -21,9 +21,11 @@ export type FindLocationInput = {
   userId?: string;
 };
 
-type RegisterLocationRow = {
+type LocationRow = {
   location_event_id: number;
   user_id: string;
+  username: string;
+  name: string;
   latitude: string;
   longitude: string;
   accuracy_meters: number | null;
@@ -71,7 +73,7 @@ export function validateRegisterLocationInput(input: RegisterLocationInput) {
 export async function registerLocation(input: RegisterLocationInput) {
   const validatedInput = validateRegisterLocationInput(input);
 
-  const result = await query<RegisterLocationRow>(
+  const result = await query<LocationRow>(
     `
       INSERT INTO location_events (user_id, latitude, longitude, accuracy_meters, captured_at)
       VALUES (
@@ -138,10 +140,14 @@ export function validateUserIdInput(userId: unknown) {
   return userId.trim();
 }
 
-function mapLocationRow(location: RegisterLocationRow) {
+function mapLocationRow(location: LocationRow) {
   return {
     locationEventId: location.location_event_id,
-    userId: location.user_id,
+    user: {
+      userId: location.user_id,
+      username: location.username,
+      name: location.name,
+    },
     latitude: Number(location.latitude),
     longitude: Number(location.longitude),
     accuracyMeters: location.accuracy_meters,
@@ -153,18 +159,21 @@ function mapLocationRow(location: RegisterLocationRow) {
 export async function getLocationById(locationEventId: unknown) {
   const validatedLocationEventId = validateLocationEventIdInput(locationEventId);
 
-  const result = await query<RegisterLocationRow>(
+  const result = await query<LocationRow>(
     `
       SELECT
-        location_event_id,
-        user_id,
-        latitude,
-        longitude,
-        accuracy_meters,
-        captured_at,
-        created_at
-      FROM location_events
-      WHERE location_event_id = $1
+        le.location_event_id,
+        le.user_id,
+        u.username,
+        u.name,
+        le.latitude,
+        le.longitude,
+        le.accuracy_meters,
+        le.captured_at,
+        le.created_at
+      FROM location_events le
+      JOIN users u ON u.user_id = le.user_id
+      WHERE le.location_event_id = $1
       LIMIT 1
     `,
     [validatedLocationEventId],
@@ -184,22 +193,76 @@ export async function getLocationById(locationEventId: unknown) {
   } as const;
 }
 
+export async function getLatestLocationPerUser(userIds?: string[]) {
+  let result;
+
+  if (userIds && userIds.length > 0) {
+    result = await query<LocationRow>(
+      `
+        SELECT DISTINCT ON (le.user_id)
+          le.location_event_id,
+          le.user_id,
+          u.username,
+          u.name,
+          le.latitude,
+          le.longitude,
+          le.accuracy_meters,
+          le.captured_at,
+          le.created_at
+        FROM location_events le
+        JOIN users u ON u.user_id = le.user_id
+        WHERE le.user_id = ANY($1::text[])
+        ORDER BY le.user_id, le.captured_at DESC
+      `,
+      [userIds],
+    );
+  } else {
+    result = await query<LocationRow>(
+      `
+        SELECT DISTINCT ON (le.user_id)
+          le.location_event_id,
+          le.user_id,
+          u.username,
+          u.name,
+          le.latitude,
+          le.longitude,
+          le.accuracy_meters,
+          le.captured_at,
+          le.created_at
+        FROM location_events le
+        JOIN users u ON u.user_id = le.user_id
+        ORDER BY le.user_id, le.captured_at DESC
+      `,
+    );
+  }
+
+  return {
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    message: "Latest locations retrieved.",
+    data: result.rows.map(mapLocationRow),
+  } as const;
+}
+
 export async function getLocationByUserId(userId: unknown) {
   const validatedUserId = validateUserIdInput(userId);
 
-  const result = await query<RegisterLocationRow>(
+  const result = await query<LocationRow>(
     `
       SELECT
-        location_event_id,
-        user_id,
-        latitude,
-        longitude,
-        accuracy_meters,
-        captured_at,
-        created_at
-      FROM location_events
-      WHERE user_id = $1
-      ORDER BY captured_at DESC
+        le.location_event_id,
+        le.user_id,
+        u.username,
+        u.name,
+        le.latitude,
+        le.longitude,
+        le.accuracy_meters,
+        le.captured_at,
+        le.created_at
+      FROM location_events le
+      JOIN users u ON u.user_id = le.user_id
+      WHERE le.user_id = $1
+      ORDER BY le.captured_at DESC
       LIMIT 1
     `,
     [validatedUserId],

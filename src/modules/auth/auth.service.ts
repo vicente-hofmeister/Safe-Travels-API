@@ -111,7 +111,7 @@ function getDependencies(dependencies: AuthDependencies = {}) {
     signToken: dependencies.signToken ?? jwt.sign,
     saltRounds: dependencies.saltRounds ?? authConfig.bcryptSaltRounds,
     jwtSecret: dependencies.jwtSecret ?? authConfig.jwtSecret,
-    jwtExpiresIn: dependencies.jwtExpiresIn ?? authConfig.jwtExpiresIn,
+    jwtExpiresIn: dependencies.jwtExpiresIn ?? (authConfig.jwtExpiresIn as SignOptions["expiresIn"]),
   };
 }
 

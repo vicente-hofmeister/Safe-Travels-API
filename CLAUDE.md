@@ -30,7 +30,7 @@ Repositórios relacionados:
 
 | Pacote | Versão |
 |---|---|
-| fastify | ^5.8.4 |
+| fastify | ^5.8.5 |
 | @fastify/cors | ^11.2.0 |
 | pg | ^8.16.3 |
 | bcrypt | ^6.0.0 |
@@ -56,7 +56,8 @@ Repositórios relacionados:
 
 | Serviço | Imagem | Versão |
 |---|---|---|
-| API | `node:25-alpine` (build local) | — |
+| API | `node:25-alpine` (build local, stage `runtime`) | — |
+| Seed | `node:25-alpine` (build local, stage `deps`) | — |
 | Banco de dados | `postgres` | **17-alpine** |
 | Adminer (UI do banco) | `adminer` | **4** |
 
@@ -158,9 +159,9 @@ npm run docker:reset
 | Branch | Propósito |
 |---|---|
 | `main` | Último código estável |
-| `basic_auth` | Branch ativa de desenvolvimento — autenticação básica (register/login) |
+| `map-data-feed` | Branch ativa de desenvolvimento — feed de localização para o mapa |
 
-> Sempre desenvolva a partir de `basic_auth`. Não altere `main` diretamente.
+> Sempre desenvolva a partir da branch ativa. Não altere `main` diretamente.
 
 ---
 
@@ -183,7 +184,17 @@ src/
 database/
   init/
     create_schema.sql # Schema SQL inicial (users + location_events)
+scripts/
+  seed.ts             # Injeta usuários e location events de teste (rodar via docker:seed)
 ```
+
+### Stages do Dockerfile
+
+| Stage | Propósito |
+|---|---|
+| `deps` | `npm ci` completo (inclui devDependencies) — usado pelo serviço `seed` |
+| `build` | Compila TypeScript e poda devDependencies (`npm prune --omit=dev`) |
+| `runtime` | Imagem final de produção — apenas `dist/` e dependências de produção |
 
 Cada módulo segue o padrão: `routes → controller → service`.
 
@@ -228,6 +239,9 @@ npm run docker:logs      # Logs de todos os serviços
 npm run docker:api:up    # Sobe apenas a API
 npm run docker:db:up     # Sobe apenas o banco
 npm run docker:db:logs   # Logs do banco
+
+# Banco de dados — seed
+npm run docker:seed      # Injeta usuários e location events de teste
 ```
 
 O Adminer fica disponível em `http://localhost:<SAFE_TRAVELS_ADMINER_PORT>` para inspeção visual do banco.
@@ -263,8 +277,23 @@ O Adminer fica disponível em `http://localhost:<SAFE_TRAVELS_ADMINER_PORT>` par
 |---|---|---|
 | GET | `/location/health` | Health check |
 | POST | `/location/register` | Registra evento de localização |
-| GET | `/location/id/:locationEventId` | Busca por ID do evento |
-| GET | `/location/user/:userId` | Busca eventos por usuário |
+| GET | `/location/latest` | Localização mais recente de cada usuário (inclui `user.username` e `user.name`) |
+| GET | `/location/latest?userIds=id1,id2` | Filtra por lista de usuários |
+| GET | `/location/id/:locationEventId` | Busca por ID do evento (inclui `user.username` e `user.name`) |
+| GET | `/location/user/:userId` | Localização mais recente de um usuário (inclui `user.username` e `user.name`) |
+
+**Resposta de localização (consultas):**
+```json
+{
+  "locationEventId": 3,
+  "user": { "userId": "...", "username": "alice", "name": "Alice Silva" },
+  "latitude": -30.0574,
+  "longitude": -51.1778,
+  "accuracyMeters": 4,
+  "capturedAt": "2026-04-19T08:10:00.000Z",
+  "createdAt": "..."
+}
+```
 
 ### Outros módulos (stubs)
 `/health`, `/user/health`, `/trip/health`, `/group/health` — apenas health checks por enquanto.

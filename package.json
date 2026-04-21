@@ -18,6 +18,7 @@
     "docker:db:up": "docker compose up -d database",
     "docker:db:down": "docker compose stop database",
     "docker:db:logs": "docker compose logs -f database",
+    "docker:seed": "docker compose --profile seed run --rm seed",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier -w .",
@@ -55,7 +56,7 @@
     "@fastify/cors": "^11.2.0",
     "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
-    "fastify": "^5.8.4",
+    "fastify": "^5.8.5",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.16.3",
     "zod": "^4.3.6"
