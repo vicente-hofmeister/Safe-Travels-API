@@ -1,0 +1,1458 @@
+openapi: "3.0.3"
+info:
+  title: Safe Travels API
+  version: "1.0.0"
+  description: |
+    API do Safe Travels — TCC de Vicente Hofmeister (PUCRS).
+
+    Sistema colaborativo para compartilhamento de localização em tempo real durante viagens em grupo.
+
+    ## Status dos endpoints
+
+    Cada endpoint indica seu estado de implementação:
+    - **Sem marcação** — implementado e funcional
+    - **⚠️ TODO** — planejado, ainda não implementado
+
+    ## Autenticação
+
+    Endpoints protegidos exigem `Authorization: Bearer <token>`.
+    O token JWT é obtido via `POST /auth/register` ou `POST /auth/login`.
+
+servers:
+  - url: http://localhost:3000
+    description: Desenvolvimento local (Docker Compose)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: health
+    description: Health checks
+  - name: auth
+    description: Autenticação e gerenciamento de sessão
+  - name: user
+    description: Perfil de usuário e sistema de follows
+  - name: group
+    description: Grupos de viagem e membros
+  - name: trip
+    description: Viagens
+  - name: location
+    description: Registro e consulta de localização
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+          example: "Descrição do erro"
+
+    SuccessEnvelope:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    PublicUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          example: alice
+        name:
+          type: string
+          example: Alice Silva
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: string
+          example: "1h"
+        user:
+          $ref: '#/components/schemas/PublicUser'
+
+    LocationData:
+      type: object
+      properties:
+        locationEventId:
+          type: integer
+          example: 42
+        user:
+          type: object
+          properties:
+            userId:
+              type: string
+              format: uuid
+            username:
+              type: string
+              example: alice
+            name:
+              type: string
+              example: Alice Silva
+        latitude:
+          type: number
+          example: -30.0574
+        longitude:
+          type: number
+          example: -51.1778
+        accuracyMeters:
+          type: integer
+          nullable: true
+          example: 4
+        capturedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    AnonymousLocationData:
+      type: object
+      description: Localização sem identificação de usuário — usada em contexto de grupo/viagem
+      properties:
+        locationEventId:
+          type: integer
+          example: 42
+        latitude:
+          type: number
+          example: -30.0574
+        longitude:
+          type: number
+          example: -51.1778
+        accuracyMeters:
+          type: integer
+          nullable: true
+          example: 4
+        capturedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    GroupOwner:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        name:
+          type: string
+
+    GroupMember:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        name:
+          type: string
+        joinedAt:
+          type: string
+          format: date-time
+
+    GroupData:
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Viagem PUCRS 2026
+        description:
+          type: string
+          nullable: true
+        owner:
+          $ref: '#/components/schemas/GroupOwner'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TripData:
+      type: object
+      properties:
+        tripId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Rio de Janeiro 2026
+        description:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+paths:
+
+  # ─── HEALTH ────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [health]
+      summary: Health check global
+      security: []
+      responses:
+        "200":
+          description: API no ar
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ─── AUTH ──────────────────────────────────────────────────────────────────
+
+  /auth/health:
+    get:
+      tags: [auth]
+      summary: Health check do módulo auth
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Cadastro de novo usuário
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, username, email, password]
+              properties:
+                name:
+                  type: string
+                  example: Alice Silva
+                username:
+                  type: string
+                  example: alice
+                  description: Apenas letras, números, ponto, hífen e sublinhado
+                email:
+                  type: string
+                  format: email
+                  example: alice@safetravels.dev
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+      responses:
+        "201":
+          description: Usuário criado — retorna JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        "400":
+          description: Input inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Email ou username já em uso
+        "500":
+          description: Erro interno
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login por email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: alice@safetravels.dev
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Login bem-sucedido — retorna JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        "400":
+          description: Input inválido
+        "401":
+          description: Credenciais inválidas
+        "500":
+          description: Erro interno
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Renova sessão com refresh token"
+      description: "⚠️ TODO: requer armazenamento de estado (refresh token). Não implementado — autenticação atual é JWT stateless."
+      x-implementation-status: todo
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          description: Token renovado
+        "401":
+          description: Não autorizado
+        "410":
+          description: Refresh token expirado
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Revoga autenticação"
+      description: "⚠️ TODO: requer armazenamento de estado para revogação. Não implementado — JWT stateless não suporta revogação sem lista de bloqueio."
+      x-implementation-status: todo
+      responses:
+        "204":
+          description: Logout bem-sucedido
+
+  /auth/forgot-password:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Solicita código para redefinir senha"
+      description: "⚠️ TODO: requer serviço de e-mail externo."
+      x-implementation-status: todo
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Se o e-mail existir, o código será enviado
+        "400":
+          description: Input inválido
+
+  /auth/reset-password:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Redefine senha com código"
+      description: "⚠️ TODO: depende de forgot-password."
+      x-implementation-status: todo
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, resetCode]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                resetCode:
+                  type: string
+      responses:
+        "200":
+          description: Senha redefinida
+        "401":
+          description: Código inválido
+        "410":
+          description: Código expirado
+
+  /auth/change-password:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Altera senha do usuário autenticado"
+      x-implementation-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+      responses:
+        "200":
+          description: Senha alterada
+        "401":
+          description: Não autorizado
+        "409":
+          description: Nova senha igual à atual
+
+  /auth/verify-email:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Verifica e-mail por código"
+      description: "⚠️ TODO: requer serviço de notificação."
+      x-implementation-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email:
+                  type: string
+                  format: email
+                code:
+                  type: string
+      responses:
+        "200":
+          description: E-mail verificado
+        "410":
+          description: Código expirado
+
+  /auth/verify-phone:
+    post:
+      tags: [auth]
+      summary: "⚠️ TODO — Verifica telefone por código"
+      description: "⚠️ TODO: requer serviço de notificação."
+      x-implementation-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone:
+                  type: string
+                  pattern: '^\+[1-9]\d{1,14}$'
+                  example: "+5551987654321"
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Telefone verificado
+        "410":
+          description: Código expirado
+
+  # ─── LOCATION ──────────────────────────────────────────────────────────────
+
+  /location/health:
+    get:
+      tags: [location]
+      summary: Health check do módulo location
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /location/register:
+    post:
+      tags: [location]
+      summary: Registra localização do usuário autenticado
+      description: |
+        O `userId` é extraído do JWT — não precisa ser enviado no body.
+
+        O evento é automaticamente vinculado a todos os grupos do usuário
+        via `location_event_groups`. Quando o módulo de viagens for implementado,
+        também será vinculado às viagens ativas via `location_event_trips`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [latitude, longitude]
+              properties:
+                latitude:
+                  type: number
+                  minimum: -90
+                  maximum: 90
+                  example: -30.0574
+                longitude:
+                  type: number
+                  minimum: -180
+                  maximum: 180
+                  example: -51.1778
+                accuracyMeters:
+                  type: integer
+                  minimum: 0
+                  example: 4
+                capturedAt:
+                  type: string
+                  format: date-time
+                  description: Horário do dispositivo. Se omitido, usa now() do servidor.
+      responses:
+        "201":
+          description: Localização registrada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          locationEventId:
+                            type: integer
+                          userId:
+                            type: string
+                            format: uuid
+                          latitude:
+                            type: number
+                          longitude:
+                            type: number
+                          accuracyMeters:
+                            type: integer
+                            nullable: true
+                          capturedAt:
+                            type: string
+                            format: date-time
+                          createdAt:
+                            type: string
+                            format: date-time
+        "400":
+          description: Input inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Não autorizado
+
+  /location/latest:
+    get:
+      tags: [location]
+      summary: Localização mais recente de cada usuário
+      parameters:
+        - name: userIds
+          in: query
+          required: false
+          description: Lista de UUIDs separados por vírgula para filtrar usuários específicos
+          schema:
+            type: string
+            example: "uuid1,uuid2,uuid3"
+      responses:
+        "200":
+          description: Lista de últimas localizações (uma por usuário)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LocationData'
+        "401":
+          description: Não autorizado
+
+  /location/id/{locationEventId}:
+    get:
+      tags: [location]
+      summary: Busca evento de localização por ID
+      parameters:
+        - name: locationEventId
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 42
+      responses:
+        "200":
+          description: Evento encontrado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LocationData'
+        "400":
+          description: ID inválido
+        "401":
+          description: Não autorizado
+        "404":
+          description: Evento não encontrado
+
+  /location/user/{userId}:
+    get:
+      tags: [location]
+      summary: Localização mais recente de um usuário específico
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Localização encontrada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LocationData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Nenhuma localização encontrada para este usuário
+
+  # ─── GROUP ─────────────────────────────────────────────────────────────────
+
+  /group/health:
+    get:
+      tags: [group]
+      summary: Health check do módulo group
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /group:
+    post:
+      tags: [group]
+      summary: Cria novo grupo
+      description: O usuário autenticado se torna owner e membro automaticamente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 150
+                  example: Viagem PUCRS 2026
+                description:
+                  type: string
+                  maxLength: 500
+      responses:
+        "201":
+          description: Grupo criado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/GroupData'
+        "400":
+          description: Input inválido
+        "401":
+          description: Não autorizado
+        "500":
+          description: Erro interno
+
+  /group/user/{userId}:
+    get:
+      tags: [group]
+      summary: Lista grupos que um usuário pertence
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Lista de grupos
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/GroupData'
+                            - type: object
+                              properties:
+                                joinedAt:
+                                  type: string
+                                  format: date-time
+        "401":
+          description: Não autorizado
+
+  /group/{groupId}:
+    get:
+      tags: [group]
+      summary: Retorna dados do grupo e lista de membros
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Grupo encontrado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/GroupData'
+                          - type: object
+                            properties:
+                              members:
+                                type: array
+                                items:
+                                  $ref: '#/components/schemas/GroupMember'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Grupo não encontrado
+
+    delete:
+      tags: [group]
+      summary: Soft delete do grupo (apenas owner)
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Grupo deletado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        "401":
+          description: Não autorizado
+        "403":
+          description: Apenas o owner pode deletar o grupo
+        "404":
+          description: Grupo não encontrado
+
+  /group/{groupId}/members:
+    post:
+      tags: [group]
+      summary: Adiciona membro ao grupo (apenas owner)
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          description: Membro adicionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        "401":
+          description: Não autorizado
+        "403":
+          description: Apenas o owner pode adicionar membros
+        "404":
+          description: Grupo não encontrado
+
+  /group/{groupId}/members/{userId}:
+    delete:
+      tags: [group]
+      summary: Remove membro do grupo
+      description: |
+        - Owner pode remover qualquer membro.
+        - Membro pode remover a si mesmo (sair do grupo).
+        - Owner **não pode** remover a si mesmo — deve deletar o grupo.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Membro removido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        "400":
+          description: Owner não pode sair — deve deletar o grupo
+        "401":
+          description: Não autorizado
+        "403":
+          description: Sem permissão para remover este membro
+        "404":
+          description: Grupo ou membro não encontrado
+
+  /group/{groupId}/location:
+    get:
+      tags: [group]
+      summary: Localização mais recente dos membros do grupo (anonimizada)
+      description: |
+        Retorna a posição mais recente de cada membro do grupo.
+        O `userId` **nunca** é exposto — a localização é anonimizada por design.
+
+        Apenas eventos registrados após a vinculação do usuário ao grupo são retornados.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Localizações dos membros
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AnonymousLocationData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Grupo não encontrado
+
+  # ─── USER ──────────────────────────────────────────────────────────────────
+
+  /user/health:
+    get:
+      tags: [user]
+      summary: Health check do módulo user
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /user/{userId}:
+    get:
+      tags: [user]
+      summary: "⚠️ TODO — Retorna perfil de um usuário"
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Perfil encontrado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId:
+                            type: string
+                            format: uuid
+                          username:
+                            type: string
+                          name:
+                            type: string
+                          profileImage:
+                            type: string
+                            format: uri
+                            nullable: true
+        "401":
+          description: Não autorizado
+        "404":
+          description: Usuário não encontrado
+
+  /user/privacy:
+    put:
+      tags: [user]
+      summary: "⚠️ TODO — Define configurações de privacidade do usuário autenticado"
+      description: "⚠️ TODO: depende da definição do modelo de privacidade (D5)."
+      x-implementation-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                privacySettings:
+                  type: string
+                  enum: [default, private, followers-only]
+      responses:
+        "200":
+          description: Configurações atualizadas
+        "401":
+          description: Não autorizado
+
+  /user/{userId}/follow:
+    post:
+      tags: [user]
+      summary: "⚠️ TODO — Solicita seguir outro usuário"
+      description: "⚠️ TODO: depende da tabela `follows` e do sistema de tiers."
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Solicitação enviada
+        "401":
+          description: Não autorizado
+        "404":
+          description: Usuário não encontrado
+
+  /user/{userId}/follow/accept:
+    post:
+      tags: [user]
+      summary: "⚠️ TODO — Aceita solicitação de follow"
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Follow aceito
+        "401":
+          description: Não autorizado
+        "404":
+          description: Solicitação não encontrada
+
+  /user/followers/{userId}:
+    delete:
+      tags: [user]
+      summary: "⚠️ TODO — Remove um seguidor da própria lista"
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Seguidor removido
+        "401":
+          description: Não autorizado
+        "404":
+          description: Seguidor não encontrado
+
+  /user/following/{userId}:
+    delete:
+      tags: [user]
+      summary: "⚠️ TODO — Para de seguir um usuário"
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deixou de seguir
+        "401":
+          description: Não autorizado
+        "404":
+          description: Usuário não encontrado
+
+  /user/followers/{userId}/tier:
+    put:
+      tags: [user]
+      summary: "⚠️ TODO — Altera o tier de um seguidor"
+      description: "⚠️ TODO: tiers disponíveis — regular, close, trusted."
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tier]
+              properties:
+                tier:
+                  type: string
+                  enum: [regular, close, trusted]
+      responses:
+        "200":
+          description: Tier atualizado
+        "401":
+          description: Não autorizado
+        "404":
+          description: Seguidor não encontrado
+
+  # ─── TRIP ──────────────────────────────────────────────────────────────────
+
+  /trip/health:
+    get:
+      tags: [trip]
+      summary: Health check do módulo trip
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /trip:
+    post:
+      tags: [trip]
+      summary: "⚠️ TODO — Cria nova viagem"
+      description: "⚠️ TODO: requer tabelas `trips`, `user_trips`, `group_trips`."
+      x-implementation-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, startDate]
+              properties:
+                title:
+                  type: string
+                  maxLength: 150
+                  example: Rio de Janeiro 2026
+                description:
+                  type: string
+                groupId:
+                  type: string
+                  format: uuid
+                  description: Grupo associado à viagem (opcional)
+                startDate:
+                  type: string
+                  format: date
+                endDate:
+                  type: string
+                  format: date
+      responses:
+        "201":
+          description: Viagem criada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TripData'
+        "400":
+          description: Input inválido
+        "401":
+          description: Não autorizado
+
+  /trip/user/{userId}:
+    get:
+      tags: [trip]
+      summary: "⚠️ TODO — Lista viagens de um usuário"
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Lista de viagens
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TripData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Usuário não encontrado
+
+  /trip/group/{groupId}:
+    get:
+      tags: [trip]
+      summary: "⚠️ TODO — Lista viagens de um grupo"
+      x-implementation-status: todo
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Lista de viagens
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TripData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Grupo não encontrado
+
+  /trip/user/{userId}/current:
+    get:
+      tags: [trip]
+      summary: "⚠️ TODO — Viagem atual de um usuário"
+      x-implementation-status: todo
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Viagem atual
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TripData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Usuário não encontrado ou sem viagem ativa
+
+  /trip/group/{groupId}/current:
+    get:
+      tags: [trip]
+      summary: "⚠️ TODO — Viagem atual de um grupo"
+      x-implementation-status: todo
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Viagem atual
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TripData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Grupo não encontrado ou sem viagem ativa
+
+  /trip/{tripId}:
+    get:
+      tags: [trip]
+      summary: "⚠️ TODO — Retorna dados da viagem"
+      x-implementation-status: todo
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Viagem encontrada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TripData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Viagem não encontrada
+
+    delete:
+      tags: [trip]
+      summary: "⚠️ TODO — Soft delete da viagem"
+      x-implementation-status: todo
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Viagem deletada
+        "401":
+          description: Não autorizado
+        "403":
+          description: Sem permissão
+        "404":
+          description: Viagem não encontrada
+
+  /trip/{tripId}/members:
+    post:
+      tags: [trip]
+      summary: "⚠️ TODO — Adiciona usuário à viagem"
+      x-implementation-status: todo
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          description: Usuário adicionado
+        "401":
+          description: Não autorizado
+        "404":
+          description: Viagem ou usuário não encontrado
+
+  /trip/{tripId}/groups:
+    post:
+      tags: [trip]
+      summary: "⚠️ TODO — Adiciona grupo à viagem"
+      x-implementation-status: todo
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [groupId]
+              properties:
+                groupId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          description: Grupo adicionado
+        "401":
+          description: Não autorizado
+        "404":
+          description: Viagem ou grupo não encontrado
+
+  /trip/{tripId}/location:
+    get:
+      tags: [trip]
+      summary: "⚠️ TODO — Localização dos participantes da viagem (anonimizada)"
+      description: "⚠️ TODO: depende de location_event_trips. Mesma semântica de /group/:groupId/location."
+      x-implementation-status: todo
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Localizações dos participantes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AnonymousLocationData'
+        "401":
+          description: Não autorizado
+        "404":
+          description: Viagem não encontrada
