@@ -61,6 +61,7 @@ services:
     working_dir: /app
     volumes:
       - ./scripts:/app/scripts:ro
+      - ./src:/app/src:ro
     environment:
       DB_HOST: ${SAFE_TRAVELS_DB_HOST}
       DB_PORT: ${SAFE_TRAVELS_DB_PORT}
@@ -72,7 +73,7 @@ services:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully
-    command: ["node_modules/.bin/tsx", "scripts/seed.ts"]
+    command: ["/bin/sh", "-c", "node_modules/.bin/tsx scripts/seed.ts"]
     restart: "no"
 
   api:

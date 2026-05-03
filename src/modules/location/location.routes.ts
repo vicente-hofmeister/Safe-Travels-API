@@ -7,13 +7,20 @@ import {
   getLatestLocationPerUserController,
 } from "./location.controller.js";
 import type { RegisterLocationInput } from "./location.service.js";
+import { verifyJwt } from "../../middleware/jwt.js";
+
+type RegisterLocationBody = Omit<RegisterLocationInput, "userId">;
 
 export async function locationRoutes(app: FastifyInstance) {
   app.get("/health", async () => locationController());
 
-  app.post<{ Body: RegisterLocationInput }>("/register", async (request, reply) => {
+  app.post<{ Body: RegisterLocationBody }>("/register", { preHandler: [verifyJwt] }, async (request, reply) => {
     try {
-      const result = await registerLocationController(request.body);
+      const input: RegisterLocationInput = {
+        ...request.body,
+        userId: request.user!.userId,
+      };
+      const result = await registerLocationController(input);
       reply.code(201);
       return result;
     } catch (error) {
@@ -37,6 +44,7 @@ export async function locationRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { locationEventId: string } }>(
     "/id/:locationEventId",
+    { preHandler: [verifyJwt] },
     async (request, reply) => {
       try {
         const result = await getLocationByIdController(request.params.locationEventId);
@@ -72,7 +80,7 @@ export async function locationRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Querystring: { userIds?: string } }>("/latest", async (request, reply) => {
+  app.get<{ Querystring: { userIds?: string } }>("/latest", { preHandler: [verifyJwt] }, async (request, reply) => {
     try {
       const rawUserIds = request.query.userIds;
       const userIds = rawUserIds
@@ -104,7 +112,7 @@ export async function locationRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get<{ Params: { userId: string } }>("/user/:userId", async (request, reply) => {
+  app.get<{ Params: { userId: string } }>("/user/:userId", { preHandler: [verifyJwt] }, async (request, reply) => {
     try {
       const result = await getLocationByUserIdController(request.params.userId);
 

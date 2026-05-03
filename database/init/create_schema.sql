@@ -28,3 +28,49 @@ CREATE TABLE IF NOT EXISTS location_events (
 
 CREATE INDEX IF NOT EXISTS idx_location_events_user_id_captured_at
   ON location_events (user_id, captured_at DESC);
+
+CREATE TABLE IF NOT EXISTS groups (
+  group_id varchar(120) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name varchar(150) NOT NULL,
+  description varchar(500),
+  owner_id varchar(120) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+  group_id varchar(120) NOT NULL,
+  user_id varchar(120) NOT NULL,
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (group_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON group_members (user_id);
+
+CREATE TABLE IF NOT EXISTS location_event_groups (
+  location_event_id bigint NOT NULL,
+  group_id varchar(120) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (location_event_id, group_id),
+  CONSTRAINT fk_leg_event FOREIGN KEY (location_event_id)
+    REFERENCES location_events(location_event_id) ON DELETE CASCADE,
+  CONSTRAINT fk_leg_group FOREIGN KEY (group_id)
+    REFERENCES groups(group_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_event_groups_group_id
+  ON location_event_groups (group_id, location_event_id DESC);
+
+-- location_event_trips: FK para trips será adicionada quando o módulo for implementado
+CREATE TABLE IF NOT EXISTS location_event_trips (
+  location_event_id bigint NOT NULL,
+  trip_id varchar(120) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (location_event_id, trip_id),
+  CONSTRAINT fk_let_event FOREIGN KEY (location_event_id)
+    REFERENCES location_events(location_event_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_event_trips_trip_id
+  ON location_event_trips (trip_id, location_event_id DESC);

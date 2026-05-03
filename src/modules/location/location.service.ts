@@ -1,4 +1,4 @@
-import { query } from "../../config/database.js";
+import { query, withDatabaseTransaction } from "../../config/database.js";
 
 export function locationHealth() {
   return {
@@ -73,54 +73,64 @@ export function validateRegisterLocationInput(input: RegisterLocationInput) {
 export async function registerLocation(input: RegisterLocationInput) {
   const validatedInput = validateRegisterLocationInput(input);
 
-  const result = await query<LocationRow>(
-    `
-      INSERT INTO location_events (user_id, latitude, longitude, accuracy_meters, captured_at)
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        COALESCE($5::timestamptz, now())
-      )
-      RETURNING
-        location_event_id,
-        user_id,
-        latitude,
-        longitude,
-        accuracy_meters,
-        captured_at,
-        created_at
-    `,
-    [
-      validatedInput.userId,
-      validatedInput.latitude,
-      validatedInput.longitude,
-      validatedInput.accuracyMeters ?? null,
-      validatedInput.capturedAt ?? null,
-    ],
-  );
+  return withDatabaseTransaction(async (client) => {
+    const result = await client.query<{
+      location_event_id: number;
+      user_id: string;
+      latitude: string;
+      longitude: string;
+      accuracy_meters: number | null;
+      captured_at: string;
+      created_at: string;
+    }>(
+      `
+        INSERT INTO location_events (user_id, latitude, longitude, accuracy_meters, captured_at)
+        VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()))
+        RETURNING location_event_id, user_id, latitude, longitude, accuracy_meters, captured_at, created_at
+      `,
+      [
+        validatedInput.userId,
+        validatedInput.latitude,
+        validatedInput.longitude,
+        validatedInput.accuracyMeters ?? null,
+        validatedInput.capturedAt ?? null,
+      ],
+    );
 
-  const inserted = result.rows[0];
+    const inserted = result.rows[0];
+    if (!inserted) throw new Error("Falha ao registrar localizacao.");
 
-  if (!inserted) {
-    throw new Error("Falha ao registrar localizacao.");
-  }
+    const groupsResult = await client.query<{ group_id: string }>(
+      `SELECT group_id FROM group_members WHERE user_id = $1`,
+      [validatedInput.userId],
+    );
 
-  return {
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    message: "Location event registered successfully.",
-    data: {
-      locationEventId: inserted.location_event_id,
-      userId: inserted.user_id,
-      latitude: Number(inserted.latitude),
-      longitude: Number(inserted.longitude),
-      accuracyMeters: inserted.accuracy_meters,
-      capturedAt: inserted.captured_at,
-      createdAt: inserted.created_at,
-    },
-  } as const;
+    if (groupsResult.rows.length > 0) {
+      const groupIds = groupsResult.rows.map((r) => r.group_id);
+      await client.query(
+        `
+          INSERT INTO location_event_groups (location_event_id, group_id)
+          SELECT $1, unnest($2::varchar[])
+        `,
+        [inserted.location_event_id, groupIds],
+      );
+    }
+
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      message: "Location event registered successfully.",
+      data: {
+        locationEventId: inserted.location_event_id,
+        userId: inserted.user_id,
+        latitude: Number(inserted.latitude),
+        longitude: Number(inserted.longitude),
+        accuracyMeters: inserted.accuracy_meters,
+        capturedAt: inserted.captured_at,
+        createdAt: inserted.created_at,
+      },
+    } as const;
+  });
 }
 
 export function validateLocationEventIdInput(locationEventId: unknown) {
@@ -280,4 +290,55 @@ export async function getLocationByUserId(userId: unknown) {
     message: "Location found.",
     data: mapLocationRow(location),
   } as const;
+}
+
+type GroupLocationRow = {
+  location_event_id: number;
+  latitude: string;
+  longitude: string;
+  accuracy_meters: number | null;
+  captured_at: string;
+  created_at: string;
+};
+
+export async function getGroupLatestLocations(groupId: string) {
+  if (!groupId.trim()) throw new Error("groupId e obrigatorio.");
+
+  const groupCheck = await query<{ group_id: string }>(
+    `SELECT group_id FROM groups WHERE group_id = $1 AND deleted_at IS NULL`,
+    [groupId.trim()],
+  );
+
+  if (!groupCheck.rows[0]) return null;
+
+  const result = await query<GroupLocationRow>(
+    `
+      SELECT DISTINCT ON (le.user_id)
+        le.location_event_id,
+        le.latitude,
+        le.longitude,
+        le.accuracy_meters,
+        le.captured_at,
+        le.created_at
+      FROM location_events le
+      JOIN location_event_groups leg ON leg.location_event_id = le.location_event_id
+      WHERE leg.group_id = $1
+      ORDER BY le.user_id, le.captured_at DESC
+    `,
+    [groupId.trim()],
+  );
+
+  return {
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    message: "Localizacoes do grupo encontradas.",
+    data: result.rows.map((row) => ({
+      locationEventId: row.location_event_id,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      accuracyMeters: row.accuracy_meters,
+      capturedAt: row.captured_at,
+      createdAt: row.created_at,
+    })),
+  };
 }
