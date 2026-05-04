@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: safe-travels-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: SAFE_TRAVELS_NODE_ENV
+        value: production
+      - key: SAFE_TRAVELS_API_HOST
+        value: 0.0.0.0
+      - key: SAFE_TRAVELS_API_PORT
+        value: "3000"
+      - key: SAFE_TRAVELS_DB_SSL
+        value: "true"
+      - key: SAFE_TRAVELS_AUTH_JWT_EXPIRES_IN
+        value: 1h
+      - key: SAFE_TRAVELS_AUTH_BCRYPT_SALT_ROUNDS
+        value: "10"
+      # Set these manually in the Render dashboard (sensitive):
+      # SAFE_TRAVELS_DB_HOST
+      # SAFE_TRAVELS_DB_PORT
+      # SAFE_TRAVELS_DB_NAME
+      # SAFE_TRAVELS_DB_USER
+      # SAFE_TRAVELS_DB_PASSWORD
+      # SAFE_TRAVELS_AUTH_JWT_SECRET

@@ -1,15 +1,18 @@
 import "./environment.js";
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
+const sslEnabled = (process.env.SAFE_TRAVELS_DB_SSL ?? process.env.DB_SSL ?? "false") === "true";
+
 const databaseConfig = {
   host: process.env.SAFE_TRAVELS_DB_HOST ?? process.env.DB_HOST ?? "localhost",
   port: Number(process.env.SAFE_TRAVELS_DB_PORT ?? process.env.DB_PORT ?? 5432),
   database: process.env.SAFE_TRAVELS_DB_NAME ?? process.env.DB_NAME ?? "safe_travels",
   user: process.env.SAFE_TRAVELS_DB_USER ?? process.env.DB_USER ?? "safe_travels_user",
   password: process.env.SAFE_TRAVELS_DB_PASSWORD ?? process.env.DB_PASSWORD ?? "safe_travels_pass",
+  ssl: sslEnabled ? { rejectUnauthorized: false } : false,
   max: 10,
   idleTimeoutMillis: 30_000,
-} as const;
+};
 
 const pool = new Pool(databaseConfig);
 
