@@ -2,7 +2,6 @@
   "name": "safe-travels-api",
   "version": "0.1.0",
   "description": "Repositório destinado ao registro da elaboração do Trabalho de Conclusão de Curso (TCC) de Sistemas de Informação do aluno Vicente Hofmeister pela Pontifícia Universidade Católica do Rio Grande do Sul (PUCRS).",
-  "main": "src/apiHandler.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
@@ -23,8 +22,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier -w .",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "deploy": "sam validate --lint && npm run build && sam package --resolve-s3 --output-template-file packaged.yaml && sam deploy --template-file packaged.yaml --no-confirm-changeset --no-fail-on-empty-changeset"
+    "test:watch": "vitest"
   },
   "repository": {
     "type": "git",
@@ -40,7 +38,6 @@
   "homepage": "https://github.com/vicente-hofmeister/Safe-Travels-API#readme",
   "devDependencies": {
     "@eslint/js": "^9.39.2",
-    "@types/aws-lambda": "^8.10.160",
     "@types/bcrypt": "^6.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.2.2",

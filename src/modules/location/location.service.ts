@@ -74,6 +74,27 @@ export async function registerLocation(input: RegisterLocationInput) {
   const validatedInput = validateRegisterLocationInput(input);
 
   return withDatabaseTransaction(async (client) => {
+    // Verificar se o usuário tem contexto de trip ativa:
+    // trip pessoal ativa OU membro de grupo que tem trip ativa
+    const activeTripCheck = await client.query<{ trip_id: string }>(
+      `SELECT ut.trip_id
+       FROM user_trips ut
+       JOIN trips t ON t.trip_id = ut.trip_id
+       WHERE ut.user_id = $1
+         AND t.ended_at IS NULL
+         AND t.deleted_at IS NULL
+       LIMIT 1`,
+      [validatedInput.userId],
+    );
+
+    if (activeTripCheck.rows.length === 0) {
+      return {
+        status: "skipped",
+        timestamp: new Date().toISOString(),
+        message: "Nenhuma viagem ativa. Localizacao nao registrada.",
+      } as const;
+    }
+
     const result = await client.query<{
       location_event_id: number;
       user_id: string;
@@ -83,11 +104,9 @@ export async function registerLocation(input: RegisterLocationInput) {
       captured_at: string;
       created_at: string;
     }>(
-      `
-        INSERT INTO location_events (user_id, latitude, longitude, accuracy_meters, captured_at)
-        VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()))
-        RETURNING location_event_id, user_id, latitude, longitude, accuracy_meters, captured_at, created_at
-      `,
+      `INSERT INTO location_events (user_id, latitude, longitude, accuracy_meters, captured_at)
+       VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()))
+       RETURNING location_event_id, user_id, latitude, longitude, accuracy_meters, captured_at, created_at`,
       [
         validatedInput.userId,
         validatedInput.latitude,
@@ -100,19 +119,43 @@ export async function registerLocation(input: RegisterLocationInput) {
     const inserted = result.rows[0];
     if (!inserted) throw new Error("Falha ao registrar localizacao.");
 
-    const groupsResult = await client.query<{ group_id: string }>(
-      `SELECT group_id FROM group_members WHERE user_id = $1`,
+    // Vincular apenas aos grupos que têm trip ativa
+    const activeGroupsResult = await client.query<{ group_id: string }>(
+      `SELECT DISTINCT gm.group_id
+       FROM group_members gm
+       JOIN trips t ON t.group_id = gm.group_id
+       WHERE gm.user_id = $1
+         AND t.ended_at IS NULL
+         AND t.deleted_at IS NULL`,
       [validatedInput.userId],
     );
 
-    if (groupsResult.rows.length > 0) {
-      const groupIds = groupsResult.rows.map((r) => r.group_id);
+    if (activeGroupsResult.rows.length > 0) {
+      const groupIds = activeGroupsResult.rows.map((r) => r.group_id);
       await client.query(
-        `
-          INSERT INTO location_event_groups (location_event_id, group_id)
-          SELECT $1, unnest($2::varchar[])
-        `,
+        `INSERT INTO location_event_groups (location_event_id, group_id)
+         SELECT $1, unnest($2::varchar[])`,
         [inserted.location_event_id, groupIds],
+      );
+    }
+
+    // Vincular às trips ativas do usuário
+    const tripsResult = await client.query<{ trip_id: string }>(
+      `SELECT ut.trip_id
+       FROM user_trips ut
+       JOIN trips t ON t.trip_id = ut.trip_id
+       WHERE ut.user_id = $1
+         AND t.ended_at IS NULL
+         AND t.deleted_at IS NULL`,
+      [validatedInput.userId],
+    );
+
+    if (tripsResult.rows.length > 0) {
+      const tripIds = tripsResult.rows.map((r) => r.trip_id);
+      await client.query(
+        `INSERT INTO location_event_trips (location_event_id, trip_id)
+         SELECT $1, unnest($2::varchar[])`,
+        [inserted.location_event_id, tripIds],
       );
     }
 
@@ -135,11 +178,9 @@ export async function registerLocation(input: RegisterLocationInput) {
 
 export function validateLocationEventIdInput(locationEventId: unknown) {
   const parsed = Number(locationEventId);
-
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error("locationEventId deve ser um inteiro maior que zero.");
   }
-
   return parsed;
 }
 
@@ -170,30 +211,25 @@ export async function getLocationById(locationEventId: unknown) {
   const validatedLocationEventId = validateLocationEventIdInput(locationEventId);
 
   const result = await query<LocationRow>(
-    `
-      SELECT
-        le.location_event_id,
-        le.user_id,
-        u.username,
-        u.name,
-        le.latitude,
-        le.longitude,
-        le.accuracy_meters,
-        le.captured_at,
-        le.created_at
-      FROM location_events le
-      JOIN users u ON u.user_id = le.user_id
-      WHERE le.location_event_id = $1
-      LIMIT 1
-    `,
+    `SELECT
+       le.location_event_id,
+       le.user_id,
+       u.username,
+       u.name,
+       le.latitude,
+       le.longitude,
+       le.accuracy_meters,
+       le.captured_at,
+       le.created_at
+     FROM location_events le
+     JOIN users u ON u.user_id = le.user_id
+     WHERE le.location_event_id = $1
+     LIMIT 1`,
     [validatedLocationEventId],
   );
 
   const location = result.rows[0];
-
-  if (!location) {
-    return null;
-  }
+  if (!location) return null;
 
   return {
     status: "ok",
@@ -204,45 +240,56 @@ export async function getLocationById(locationEventId: unknown) {
 }
 
 export async function getLatestLocationPerUser(userIds?: string[]) {
+  // Retorna apenas usuários com trip ativa (pessoal ou de grupo)
   let result;
 
   if (userIds && userIds.length > 0) {
     result = await query<LocationRow>(
-      `
-        SELECT DISTINCT ON (le.user_id)
-          le.location_event_id,
-          le.user_id,
-          u.username,
-          u.name,
-          le.latitude,
-          le.longitude,
-          le.accuracy_meters,
-          le.captured_at,
-          le.created_at
-        FROM location_events le
-        JOIN users u ON u.user_id = le.user_id
-        WHERE le.user_id = ANY($1::text[])
-        ORDER BY le.user_id, le.captured_at DESC
-      `,
+      `SELECT DISTINCT ON (le.user_id)
+         le.location_event_id,
+         le.user_id,
+         u.username,
+         u.name,
+         le.latitude,
+         le.longitude,
+         le.accuracy_meters,
+         le.captured_at,
+         le.created_at
+       FROM location_events le
+       JOIN users u ON u.user_id = le.user_id
+       WHERE le.user_id = ANY($1::text[])
+         AND EXISTS (
+           SELECT 1 FROM user_trips ut
+           JOIN trips t ON t.trip_id = ut.trip_id
+           WHERE ut.user_id = le.user_id
+             AND t.ended_at IS NULL
+             AND t.deleted_at IS NULL
+         )
+       ORDER BY le.user_id, le.captured_at DESC`,
       [userIds],
     );
   } else {
     result = await query<LocationRow>(
-      `
-        SELECT DISTINCT ON (le.user_id)
-          le.location_event_id,
-          le.user_id,
-          u.username,
-          u.name,
-          le.latitude,
-          le.longitude,
-          le.accuracy_meters,
-          le.captured_at,
-          le.created_at
-        FROM location_events le
-        JOIN users u ON u.user_id = le.user_id
-        ORDER BY le.user_id, le.captured_at DESC
-      `,
+      `SELECT DISTINCT ON (le.user_id)
+         le.location_event_id,
+         le.user_id,
+         u.username,
+         u.name,
+         le.latitude,
+         le.longitude,
+         le.accuracy_meters,
+         le.captured_at,
+         le.created_at
+       FROM location_events le
+       JOIN users u ON u.user_id = le.user_id
+       WHERE EXISTS (
+         SELECT 1 FROM user_trips ut
+         JOIN trips t ON t.trip_id = ut.trip_id
+         WHERE ut.user_id = le.user_id
+           AND t.ended_at IS NULL
+           AND t.deleted_at IS NULL
+       )
+       ORDER BY le.user_id, le.captured_at DESC`,
     );
   }
 
@@ -258,31 +305,26 @@ export async function getLocationByUserId(userId: unknown) {
   const validatedUserId = validateUserIdInput(userId);
 
   const result = await query<LocationRow>(
-    `
-      SELECT
-        le.location_event_id,
-        le.user_id,
-        u.username,
-        u.name,
-        le.latitude,
-        le.longitude,
-        le.accuracy_meters,
-        le.captured_at,
-        le.created_at
-      FROM location_events le
-      JOIN users u ON u.user_id = le.user_id
-      WHERE le.user_id = $1
-      ORDER BY le.captured_at DESC
-      LIMIT 1
-    `,
+    `SELECT
+       le.location_event_id,
+       le.user_id,
+       u.username,
+       u.name,
+       le.latitude,
+       le.longitude,
+       le.accuracy_meters,
+       le.captured_at,
+       le.created_at
+     FROM location_events le
+     JOIN users u ON u.user_id = le.user_id
+     WHERE le.user_id = $1
+     ORDER BY le.captured_at DESC
+     LIMIT 1`,
     [validatedUserId],
   );
 
   const location = result.rows[0];
-
-  if (!location) {
-    return null;
-  }
+  if (!location) return null;
 
   return {
     status: "ok",
@@ -308,23 +350,39 @@ export async function getGroupLatestLocations(groupId: string) {
     `SELECT group_id FROM groups WHERE group_id = $1 AND deleted_at IS NULL`,
     [groupId.trim()],
   );
-
   if (!groupCheck.rows[0]) return null;
 
+  // Só retorna localização se o grupo tiver trip ativa
+  const activeTripCheck = await query<{ trip_id: string }>(
+    `SELECT trip_id FROM trips
+     WHERE group_id = $1
+       AND ended_at IS NULL
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [groupId.trim()],
+  );
+
+  if (activeTripCheck.rows.length === 0) {
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      message: "Grupo sem viagem ativa.",
+      data: [],
+    };
+  }
+
   const result = await query<GroupLocationRow>(
-    `
-      SELECT DISTINCT ON (le.user_id)
-        le.location_event_id,
-        le.latitude,
-        le.longitude,
-        le.accuracy_meters,
-        le.captured_at,
-        le.created_at
-      FROM location_events le
-      JOIN location_event_groups leg ON leg.location_event_id = le.location_event_id
-      WHERE leg.group_id = $1
-      ORDER BY le.user_id, le.captured_at DESC
-    `,
+    `SELECT DISTINCT ON (le.user_id)
+       le.location_event_id,
+       le.latitude,
+       le.longitude,
+       le.accuracy_meters,
+       le.captured_at,
+       le.created_at
+     FROM location_events le
+     JOIN location_event_groups leg ON leg.location_event_id = le.location_event_id
+     WHERE leg.group_id = $1
+     ORDER BY le.user_id, le.captured_at DESC`,
     [groupId.trim()],
   );
 
