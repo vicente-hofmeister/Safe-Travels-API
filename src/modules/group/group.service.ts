@@ -1,5 +1,20 @@
 import { z as zod } from "zod";
-import { query, withDatabaseTransaction } from "../../config/database.js";
+import { withDatabaseTransaction } from "../../config/database.js";
+import {
+  insertGroup,
+  insertGroupMember,
+  findOwnerForGroup,
+  findGroupOwner,
+  findGroupWithOwner,
+  findGroupMembers,
+  findGroupsByUserId,
+  deleteGroupMember,
+  softDeleteGroup,
+  upsertGroupMember,
+  type GroupRow,
+  type GroupListRow,
+  type MemberRow,
+} from "./group.repository.js";
 
 const createGroupSchema = zod.object({
   name: zod.string().trim().min(1, "Nome do grupo e obrigatorio").max(150),
@@ -9,26 +24,6 @@ const createGroupSchema = zod.object({
 const addMemberSchema = zod.object({
   userId: zod.string().trim().min(1, "userId e obrigatorio"),
 });
-
-type GroupRow = {
-  group_id: string;
-  name: string;
-  description: string | null;
-  owner_id: string;
-  owner_username: string;
-  owner_name: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type GroupListRow = GroupRow & { joined_at: string };
-
-type MemberRow = {
-  user_id: string;
-  username: string;
-  name: string;
-  joined_at: string;
-};
 
 export class GroupError extends Error {
   constructor(
@@ -74,7 +69,6 @@ export function groupHealth() {
 
 export async function createGroup(input: unknown, ownerUserId: string) {
   const parsed = createGroupSchema.safeParse(input);
-
   if (!parsed.success) {
     throw new GroupError(400, parsed.error.issues[0]?.message ?? "Input invalido");
   }
@@ -82,35 +76,13 @@ export async function createGroup(input: unknown, ownerUserId: string) {
   const { name, description } = parsed.data;
 
   return withDatabaseTransaction(async (client) => {
-    const groupResult = await client.query<{
-      group_id: string;
-      name: string;
-      description: string | null;
-      owner_id: string;
-      created_at: string;
-      updated_at: string;
-    }>(
-      `
-        INSERT INTO groups (name, description, owner_id)
-        VALUES ($1, $2, $3)
-        RETURNING group_id, name, description, owner_id, created_at, updated_at
-      `,
-      [name, description ?? null, ownerUserId],
-    );
-
+    const groupResult = await insertGroup(client, name, description ?? null, ownerUserId);
     const groupRow = groupResult.rows[0];
     if (!groupRow) throw new GroupError(500, "Falha ao criar grupo");
 
-    await client.query(`INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)`, [
-      groupRow.group_id,
-      ownerUserId,
-    ]);
+    await insertGroupMember(client, groupRow.group_id, ownerUserId);
 
-    const ownerResult = await client.query<{ username: string; name: string }>(
-      `SELECT username, name FROM users WHERE user_id = $1`,
-      [ownerUserId],
-    );
-
+    const ownerResult = await findOwnerForGroup(client, ownerUserId);
     const owner = ownerResult.rows[0];
 
     return {
@@ -136,31 +108,11 @@ export async function createGroup(input: unknown, ownerUserId: string) {
 export async function getGroupById(groupId: string) {
   if (!groupId.trim()) throw new GroupError(400, "groupId e obrigatorio");
 
-  const groupResult = await query<GroupRow>(
-    `
-      SELECT g.group_id, g.name, g.description, g.owner_id, g.created_at, g.updated_at,
-             u.username AS owner_username, u.name AS owner_name
-      FROM groups g
-      JOIN users u ON u.user_id = g.owner_id
-      WHERE g.group_id = $1 AND g.deleted_at IS NULL
-    `,
-    [groupId.trim()],
-  );
-
+  const groupResult = await findGroupWithOwner(groupId);
   const groupRow = groupResult.rows[0];
-
   if (!groupRow) return null;
 
-  const membersResult = await query<MemberRow>(
-    `
-      SELECT gm.user_id, gm.joined_at, u.username, u.name
-      FROM group_members gm
-      JOIN users u ON u.user_id = gm.user_id
-      WHERE gm.group_id = $1
-      ORDER BY gm.joined_at ASC
-    `,
-    [groupId.trim()],
-  );
+  const membersResult = await findGroupMembers(groupId);
 
   return {
     status: "ok",
@@ -183,22 +135,14 @@ export async function addGroupMember(groupId: string, input: unknown, requesterU
 
   const { userId } = parsed.data;
 
-  const groupResult = await query<{ owner_id: string }>(
-    `SELECT owner_id FROM groups WHERE group_id = $1 AND deleted_at IS NULL`,
-    [groupId.trim()],
-  );
-
+  const groupResult = await findGroupOwner(groupId);
   const group = groupResult.rows[0];
   if (!group) throw new GroupError(404, "Grupo nao encontrado");
-
   if (group.owner_id !== requesterUserId) {
     throw new GroupError(403, "Apenas o owner pode adicionar membros");
   }
 
-  await query(`INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
-    groupId.trim(),
-    userId,
-  ]);
+  await upsertGroupMember(groupId, userId);
 
   return {
     status: "ok",
@@ -215,33 +159,20 @@ export async function removeGroupMember(
   if (!groupId.trim()) throw new GroupError(400, "groupId e obrigatorio");
   if (!targetUserId.trim()) throw new GroupError(400, "userId e obrigatorio");
 
-  const groupResult = await query<{ owner_id: string }>(
-    `SELECT owner_id FROM groups WHERE group_id = $1 AND deleted_at IS NULL`,
-    [groupId.trim()],
-  );
-
+  const groupResult = await findGroupOwner(groupId);
   const group = groupResult.rows[0];
   if (!group) throw new GroupError(404, "Grupo nao encontrado");
 
   const isOwner = group.owner_id === requesterUserId;
   const isSelf = targetUserId === requesterUserId;
 
-  if (!isOwner && !isSelf) {
-    throw new GroupError(403, "Sem permissao para remover este membro");
-  }
-
+  if (!isOwner && !isSelf) throw new GroupError(403, "Sem permissao para remover este membro");
   if (isOwner && isSelf) {
     throw new GroupError(400, "O owner nao pode sair do grupo. Delete o grupo para encerrar.");
   }
 
-  const result = await query(
-    `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`,
-    [groupId.trim(), targetUserId.trim()],
-  );
-
-  if (result.rowCount === 0) {
-    throw new GroupError(404, "Membro nao encontrado no grupo");
-  }
+  const result = await deleteGroupMember(groupId, targetUserId);
+  if (result.rowCount === 0) throw new GroupError(404, "Membro nao encontrado no grupo");
 
   return {
     status: "ok",
@@ -253,19 +184,7 @@ export async function removeGroupMember(
 export async function getGroupsByUserId(userId: string) {
   if (!userId.trim()) throw new GroupError(400, "userId e obrigatorio");
 
-  const result = await query<GroupListRow>(
-    `
-      SELECT g.group_id, g.name, g.description, g.owner_id, g.created_at, g.updated_at,
-             u.username AS owner_username, u.name AS owner_name,
-             gm.joined_at
-      FROM groups g
-      JOIN group_members gm ON gm.group_id = g.group_id
-      JOIN users u ON u.user_id = g.owner_id
-      WHERE gm.user_id = $1 AND g.deleted_at IS NULL
-      ORDER BY gm.joined_at DESC
-    `,
-    [userId.trim()],
-  );
+  const result = await findGroupsByUserId(userId);
 
   return {
     status: "ok",
@@ -281,22 +200,14 @@ export async function getGroupsByUserId(userId: string) {
 export async function deleteGroup(groupId: string, requesterUserId: string) {
   if (!groupId.trim()) throw new GroupError(400, "groupId e obrigatorio");
 
-  const groupResult = await query<{ owner_id: string }>(
-    `SELECT owner_id FROM groups WHERE group_id = $1 AND deleted_at IS NULL`,
-    [groupId.trim()],
-  );
-
+  const groupResult = await findGroupOwner(groupId);
   const group = groupResult.rows[0];
   if (!group) throw new GroupError(404, "Grupo nao encontrado");
-
   if (group.owner_id !== requesterUserId) {
     throw new GroupError(403, "Apenas o owner pode deletar o grupo");
   }
 
-  await query(
-    `UPDATE groups SET deleted_at = now(), updated_at = now() WHERE group_id = $1`,
-    [groupId.trim()],
-  );
+  await softDeleteGroup(groupId);
 
   return {
     status: "ok",
