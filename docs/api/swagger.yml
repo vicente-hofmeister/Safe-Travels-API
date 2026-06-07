@@ -76,7 +76,7 @@ components:
     PublicUser:
       type: object
       properties:
-        id:
+        userId:
           type: string
           format: uuid
         username:
@@ -89,9 +89,6 @@ components:
           type: string
           format: email
         createdAt:
-          type: string
-          format: date-time
-        updatedAt:
           type: string
           format: date-time
 
@@ -215,31 +212,94 @@ components:
           type: string
           format: date-time
 
-    TripData:
+    TripOwner:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        name:
+          type: string
+
+    TripMember:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        name:
+          type: string
+        joinedAt:
+          type: string
+          format: date-time
+
+    TripRoutePoint:
+      type: object
+      properties:
+        locationEventId:
+          type: integer
+        latitude:
+          type: number
+        longitude:
+          type: number
+        accuracyMeters:
+          type: integer
+          nullable: true
+        capturedAt:
+          type: string
+          format: date-time
+
+    TripSummary:
       type: object
       properties:
         tripId:
           type: string
           format: uuid
-        title:
+        name:
           type: string
-          example: Rio de Janeiro 2026
+          example: Expedição Litoral Gaúcho 2026
         description:
           type: string
           nullable: true
-        startDate:
+        owner:
+          $ref: '#/components/schemas/TripOwner'
+        groupId:
           type: string
-          format: date
-        endDate:
-          type: string
-          format: date
+          format: uuid
           nullable: true
+          description: "NULL = viagem individual; UUID = viagem de grupo"
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "NULL = trip ativa"
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    TripData:
+      allOf:
+        - $ref: '#/components/schemas/TripSummary'
+        - type: object
+          properties:
+            members:
+              type: array
+              items:
+                $ref: '#/components/schemas/TripMember'
+            route:
+              type: array
+              items:
+                $ref: '#/components/schemas/TripRoutePoint'
 
 paths:
 
@@ -541,9 +601,11 @@ paths:
       description: |
         O `userId` é extraído do JWT — não precisa ser enviado no body.
 
-        O evento é automaticamente vinculado a todos os grupos do usuário
-        via `location_event_groups`. Quando o módulo de viagens for implementado,
-        também será vinculado às viagens ativas via `location_event_trips`.
+        Se o usuário não tiver trip ativa (individual ou de grupo), retorna
+        `{ status: "skipped" }` sem inserir nenhum evento.
+
+        Quando há trip ativa, o evento é vinculado aos grupos com trip ativa
+        via `location_event_groups` e às trips ativas via `location_event_trips`.
       requestBody:
         required: true
         content:
@@ -613,7 +675,8 @@ paths:
   /location/latest:
     get:
       tags: [location]
-      summary: Localização mais recente de cada usuário
+      summary: Localização mais recente de cada usuário com trip ativa
+      description: Retorna apenas usuários que possuem trip ativa no momento. Filtrável por lista de userIds.
       parameters:
         - name: userIds
           in: query
@@ -959,11 +1022,46 @@ paths:
         "200":
           description: OK
 
+  /user/search:
+    get:
+      tags: [user]
+      summary: Busca usuários por nome ou username
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Termo de busca (mínimo 2 caracteres). ILIKE sobre username e name.
+          schema:
+            type: string
+            minLength: 2
+            example: alice
+      responses:
+        "200":
+          description: Lista de usuários encontrados (máximo 20)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PublicUser'
+        "400":
+          description: Termo de busca muito curto (menos de 2 caracteres)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Não autorizado
+
   /user/{userId}:
     get:
       tags: [user]
-      summary: "⚠️ TODO — Retorna perfil de um usuário"
-      x-implementation-status: todo
+      summary: Retorna perfil de um usuário
       parameters:
         - name: userId
           in: path
@@ -982,19 +1080,9 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: object
-                        properties:
-                          userId:
-                            type: string
-                            format: uuid
-                          username:
-                            type: string
-                          name:
-                            type: string
-                          profileImage:
-                            type: string
-                            format: uri
-                            nullable: true
+                        $ref: '#/components/schemas/PublicUser'
+        "400":
+          description: userId inválido
         "401":
           description: Não autorizado
         "404":
@@ -1149,33 +1237,33 @@ paths:
   /trip:
     post:
       tags: [trip]
-      summary: "⚠️ TODO — Cria nova viagem"
-      description: "⚠️ TODO: requer tabelas `trips`, `user_trips`, `group_trips`."
-      x-implementation-status: todo
+      summary: Cria nova viagem
+      description: |
+        Se `groupId` for informado, cria uma viagem de grupo e todos os membros
+        atuais do grupo são automaticamente adicionados como membros da viagem.
+        Se omitido, cria uma viagem individual do usuário autenticado.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [title, startDate]
+              required: [name]
               properties:
-                title:
+                name:
                   type: string
                   maxLength: 150
-                  example: Rio de Janeiro 2026
+                  example: Expedição Litoral Gaúcho 2026
                 description:
                   type: string
                 groupId:
                   type: string
                   format: uuid
-                  description: Grupo associado à viagem (opcional)
-                startDate:
+                  description: Grupo associado (opcional — omitir para viagem individual)
+                startedAt:
                   type: string
-                  format: date
-                endDate:
-                  type: string
-                  format: date
+                  format: date-time
+                  description: Se omitido, usa now() do servidor
       responses:
         "201":
           description: Viagem criada
@@ -1196,8 +1284,7 @@ paths:
   /trip/user/{userId}:
     get:
       tags: [trip]
-      summary: "⚠️ TODO — Lista viagens de um usuário"
-      x-implementation-status: todo
+      summary: Lista viagens de um usuário
       parameters:
         - name: userId
           in: path
@@ -1207,7 +1294,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Lista de viagens
+          description: Lista de viagens (ativas e históricas)
           content:
             application/json:
               schema:
@@ -1218,17 +1305,14 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/TripData'
+                          $ref: '#/components/schemas/TripSummary'
         "401":
           description: Não autorizado
-        "404":
-          description: Usuário não encontrado
 
   /trip/group/{groupId}:
     get:
       tags: [trip]
-      summary: "⚠️ TODO — Lista viagens de um grupo"
-      x-implementation-status: todo
+      summary: Lista viagens de um grupo
       parameters:
         - name: groupId
           in: path
@@ -1238,7 +1322,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Lista de viagens
+          description: Lista de viagens do grupo
           content:
             application/json:
               schema:
@@ -1249,75 +1333,16 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: '#/components/schemas/TripData'
+                          $ref: '#/components/schemas/TripSummary'
         "401":
           description: Não autorizado
         "404":
           description: Grupo não encontrado
 
-  /trip/user/{userId}/current:
-    get:
-      tags: [trip]
-      summary: "⚠️ TODO — Viagem atual de um usuário"
-      x-implementation-status: todo
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Viagem atual
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/TripData'
-        "401":
-          description: Não autorizado
-        "404":
-          description: Usuário não encontrado ou sem viagem ativa
-
-  /trip/group/{groupId}/current:
-    get:
-      tags: [trip]
-      summary: "⚠️ TODO — Viagem atual de um grupo"
-      x-implementation-status: todo
-      parameters:
-        - name: groupId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Viagem atual
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/TripData'
-        "401":
-          description: Não autorizado
-        "404":
-          description: Grupo não encontrado ou sem viagem ativa
-
   /trip/{tripId}:
     get:
       tags: [trip]
-      summary: "⚠️ TODO — Retorna dados da viagem"
-      x-implementation-status: todo
+      summary: Retorna dados completos da viagem (com membros e rota)
       parameters:
         - name: tripId
           in: path
@@ -1344,8 +1369,7 @@ paths:
 
     delete:
       tags: [trip]
-      summary: "⚠️ TODO — Soft delete da viagem"
-      x-implementation-status: todo
+      summary: Soft delete da viagem (apenas owner)
       parameters:
         - name: tripId
           in: path
@@ -1356,18 +1380,47 @@ paths:
       responses:
         "200":
           description: Viagem deletada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
         "401":
           description: Não autorizado
         "403":
-          description: Sem permissão
+          description: Apenas o owner pode deletar a viagem
+        "404":
+          description: Viagem não encontrada
+
+  /trip/{tripId}/end:
+    patch:
+      tags: [trip]
+      summary: Encerra a viagem (apenas owner)
+      description: Preenche `ended_at` com o horário atual. Irreversível.
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Viagem encerrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+        "401":
+          description: Não autorizado
+        "403":
+          description: Apenas o owner pode encerrar a viagem
         "404":
           description: Viagem não encontrada
 
   /trip/{tripId}/members:
     post:
       tags: [trip]
-      summary: "⚠️ TODO — Adiciona usuário à viagem"
-      x-implementation-status: todo
+      summary: Adiciona membro à viagem (apenas owner)
       parameters:
         - name: tripId
           in: path
@@ -1388,17 +1441,25 @@ paths:
                   format: uuid
       responses:
         "201":
-          description: Usuário adicionado
+          description: Membro adicionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
         "401":
           description: Não autorizado
+        "403":
+          description: Apenas o owner pode adicionar membros
         "404":
           description: Viagem ou usuário não encontrado
 
-  /trip/{tripId}/groups:
-    post:
+  /trip/{tripId}/members/{userId}:
+    delete:
       tags: [trip]
-      summary: "⚠️ TODO — Adiciona grupo à viagem"
-      x-implementation-status: todo
+      summary: Remove membro da viagem
+      description: |
+        - Owner pode remover qualquer membro.
+        - Membro pode remover a si mesmo (sair da viagem).
       parameters:
         - name: tripId
           in: path
@@ -1406,33 +1467,7 @@ paths:
           schema:
             type: string
             format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [groupId]
-              properties:
-                groupId:
-                  type: string
-                  format: uuid
-      responses:
-        "201":
-          description: Grupo adicionado
-        "401":
-          description: Não autorizado
-        "404":
-          description: Viagem ou grupo não encontrado
-
-  /trip/{tripId}/location:
-    get:
-      tags: [trip]
-      summary: "⚠️ TODO — Localização dos participantes da viagem (anonimizada)"
-      description: "⚠️ TODO: depende de location_event_trips. Mesma semântica de /group/:groupId/location."
-      x-implementation-status: todo
-      parameters:
-        - name: tripId
+        - name: userId
           in: path
           required: true
           schema:
@@ -1440,19 +1475,14 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Localizações dos participantes
+          description: Membro removido
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/AnonymousLocationData'
+                $ref: '#/components/schemas/SuccessEnvelope'
         "401":
           description: Não autorizado
+        "403":
+          description: Sem permissão para remover este membro
         "404":
-          description: Viagem não encontrada
+          description: Viagem ou membro não encontrado
