@@ -1,16 +1,16 @@
-// Safe Travels — Database Model (plano final)
-// Última atualização: 2026-04-26
+// Safe Travels — Database Model (implementado)
+// Última atualização: 2026-06-07
 // Ferramenta de visualização: https://dbdiagram.io
+//
+// Reflete o schema real da branch `trips`.
+// Funcionalidades planejadas (follows, privacy_settings) marcadas como nota.
 
 Table users {
   user_id varchar [pk, default: `gen_random_uuid()`]
   username varchar(80) [not null, unique]
   name varchar(150) [not null]
   email varchar(255) [not null, unique]
-  phone varchar
   password_hash text [not null]
-  profile_image varchar
-  privacy_settings varchar [not null, default: "default", note: "default | private | followers-only"]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz
@@ -19,34 +19,23 @@ Table users {
     username
     email
   }
-}
 
-Table follows {
-  follower_id varchar [not null, ref: > users.user_id]
-  following_id varchar [not null, ref: > users.user_id]
-  tier varchar [not null, default: "regular", note: "regular | close | trusted"]
-  followed_at timestamptz [not null, default: `now()`]
-
-  indexes {
-    (follower_id, following_id) [pk]
-    following_id
-  }
+  note: "Campos planejados não implementados: phone, profile_image, privacy_settings (location_visibility)"
 }
 
 Table groups {
-  group_id varchar(120) [pk, default: `gen_random_uuid()`]
-  owner_id varchar(120) [not null, ref: > users.user_id]
+  group_id varchar [pk, default: `gen_random_uuid()`]
+  owner_id varchar [not null, ref: > users.user_id]
   name varchar(150) [not null]
   description varchar(500)
-  profile_image varchar
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz
 }
 
 Table group_members {
-  group_id varchar(120) [not null, ref: > groups.group_id]
-  user_id varchar(120) [not null, ref: > users.user_id]
+  group_id varchar [not null, ref: > groups.group_id]
+  user_id varchar [not null, ref: > users.user_id]
   joined_at timestamptz [not null, default: `now()`]
 
   indexes {
@@ -56,36 +45,32 @@ Table group_members {
 }
 
 Table trips {
-  trip_id varchar(120) [pk, default: `gen_random_uuid()`]
-  title varchar(150) [not null]
+  trip_id varchar [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
   description text
-  trip_image varchar
-  start_date date [not null]
-  end_date date
+  owner_id varchar [not null, ref: > users.user_id]
+  group_id varchar [ref: > groups.group_id, note: "NULL = viagem individual; NOT NULL = viagem de grupo"]
+  started_at timestamptz [not null, default: `now()`]
+  ended_at timestamptz [note: "NULL = trip ativa"]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz
-}
-
-Table user_trips {
-  user_id varchar(120) [not null, ref: > users.user_id]
-  trip_id varchar(120) [not null, ref: > trips.trip_id]
-  joined_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (user_id, trip_id) [pk]
-    trip_id
+    owner_id
+    group_id
+    ended_at
   }
 }
 
-Table group_trips {
-  group_id varchar(120) [not null, ref: > groups.group_id]
-  trip_id varchar(120) [not null, ref: > trips.trip_id]
+Table user_trips {
+  trip_id varchar [not null, ref: > trips.trip_id]
+  user_id varchar [not null, ref: > users.user_id]
   joined_at timestamptz [not null, default: `now()`]
 
   indexes {
-    (group_id, trip_id) [pk]
-    trip_id
+    (trip_id, user_id) [pk]
+    user_id
   }
 }
 
@@ -93,13 +78,16 @@ Table group_trips {
 // Vínculos com grupos e viagens são feitos via tabelas de junção,
 // permitindo que um evento seja compartilhado com múltiplos contextos
 // sem duplicação de dados.
+//
+// Regra: location_event_groups e location_event_trips só recebem
+// grupos/viagens com trip ativa no momento do registro.
 Table location_events {
   location_event_id bigserial [pk]
-  user_id varchar(120) [not null, ref: > users.user_id]
+  user_id varchar [not null, ref: > users.user_id]
   latitude decimal(10,7) [not null]
   longitude decimal(10,7) [not null]
   accuracy_meters int
-  captured_at timestamptz [not null, default: `now()`, note: "Horário do dispositivo"]
+  captured_at timestamptz [not null, note: "Horário do dispositivo"]
   created_at timestamptz [not null, default: `now()`, note: "Horário de recepção pelo servidor"]
 
   indexes {
@@ -109,8 +97,7 @@ Table location_events {
 
 Table location_event_groups {
   location_event_id bigint [not null, ref: > location_events.location_event_id]
-  group_id varchar(120) [not null, ref: > groups.group_id]
-  created_at timestamptz [not null, default: `now()`]
+  group_id varchar [not null, ref: > groups.group_id]
 
   indexes {
     (location_event_id, group_id) [pk]
@@ -120,11 +107,18 @@ Table location_event_groups {
 
 Table location_event_trips {
   location_event_id bigint [not null, ref: > location_events.location_event_id]
-  trip_id varchar(120) [not null, ref: > trips.trip_id]
-  created_at timestamptz [not null, default: `now()`]
+  trip_id varchar [not null, ref: > trips.trip_id]
 
   indexes {
     (location_event_id, trip_id) [pk]
     (trip_id, location_event_id)
   }
 }
+
+Table schema_migrations {
+  name varchar [pk, note: "Nome do arquivo SQL ex: 001_add_trips.sql"]
+  applied_at timestamptz [not null, default: `now()`]
+}
+
+// Tabelas planejadas, não implementadas:
+// - follows (follower_id, followed_id, created_at)

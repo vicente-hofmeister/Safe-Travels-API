@@ -18,6 +18,7 @@
     "docker:db:down": "docker compose stop database",
     "docker:db:logs": "docker compose logs -f database",
     "docker:seed": "docker compose --profile seed run --rm --build seed",
+    "migrate": "tsx scripts/migrate.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier -w .",
